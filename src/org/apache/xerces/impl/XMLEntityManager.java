@@ -2276,8 +2276,10 @@ public class XMLEntityManager
                     load(1, false);
                 }
                 if (c == '\r' && external) {
-                    if (fCurrentEntity.ch[fCurrentEntity.position++] != '\n') {
-                        fCurrentEntity.position--;
+                    if (fCurrentEntity.position < fCurrentEntity.count) {
+                        if (fCurrentEntity.ch[fCurrentEntity.position++] != '\n') {
+                            fCurrentEntity.position--;
+                        }
                     }
                     c = '\n';
                 }
@@ -2844,7 +2846,7 @@ public class XMLEntityManager
                 c = fCurrentEntity.ch[fCurrentEntity.position++];
                 if ((c == quote &&
                      (!fCurrentEntity.literal || external))
-                    || c == '%' || !XMLChar.isContent(c)) {
+                    || c == '%' || !(XMLChar.isContent(c) || c == '\r' && !external)) {
                     fCurrentEntity.position--;
                     break;
                 }
