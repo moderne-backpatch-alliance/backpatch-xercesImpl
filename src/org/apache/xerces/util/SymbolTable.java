@@ -79,10 +79,40 @@ package org.apache.xerces.util;
  *   characters are especially prone to this poor hashing behavior.
  *  </li>
  * </ul>
+ * 
+ * An instance of <code>SymbolTable</code> has two parameters that affect its
+ * performance: <i>initial capacity</i> and <i>load factor</i>.  The
+ * <i>capacity</i> is the number of <i>buckets</i> in the SymbolTable, and the
+ * <i>initial capacity</i> is simply the capacity at the time the SymbolTable
+ * is created.  Note that the SymbolTable is <i>open</i>: in the case of a "hash
+ * collision", a single bucket stores multiple entries, which must be searched
+ * sequentially.  The <i>load factor</i> is a measure of how full the SymbolTable
+ * is allowed to get before its capacity is automatically increased.
+ * When the number of entries in the SymbolTable exceeds the product of the load
+ * factor and the current capacity, the capacity is increased by calling the
+ * <code>rehash</code> method.<p>
  *
+ * Generally, the default load factor (.75) offers a good tradeoff between
+ * time and space costs.  Higher values decrease the space overhead but
+ * increase the time cost to look up an entry (which is reflected in most
+ * <tt>SymbolTable</tt> operations, including <tt>addSymbol</tt> and <tt>containsSymbol</tt>).<p>
+ *
+ * The initial capacity controls a tradeoff between wasted space and the
+ * need for <code>rehash</code> operations, which are time-consuming.
+ * No <code>rehash</code> operations will <i>ever</i> occur if the initial
+ * capacity is greater than the maximum number of entries the
+ * <tt>Hashtable</tt> will contain divided by its load factor.  However,
+ * setting the initial capacity too high can waste space.<p>
+ *
+ * If many entries are to be made into a <code>SymbolTable</code>, 
+ * creating it with a sufficiently large capacity may allow the 
+ * entries to be inserted more efficiently than letting it perform 
+ * automatic rehashing as needed to grow the table. <p>
+
  * @see SymbolHash
  *
  * @author Andy Clark
+ * @author John Kim, IBM
  *
  * @version $Id$
  */
@@ -94,6 +124,12 @@ public class SymbolTable {
 
     /** Default table size. */
     protected static final int TABLE_SIZE = 101;
+    
+    /** Maximum hash collisions per bucket for a table with load factor == 1. */
+    protected static final int MAX_HASH_COLLISIONS = 40;
+    
+    protected static final int MULTIPLIERS_SIZE = 1 << 5;
+    protected static final int MULTIPLIERS_MASK = MULTIPLIERS_SIZE - 1;
 
     //
     // Data
@@ -102,22 +138,84 @@ public class SymbolTable {
     /** Buckets. */
     protected Entry[] fBuckets = null;
 
-    // actual table size
+    /** actual table size **/
     protected int fTableSize;
+
+    /** The total number of entries in the hash table. */
+    protected transient int fCount;
+
+    /** The table is rehashed when its size exceeds this threshold.  (The
+     * value of this field is (int)(capacity * loadFactor).) */
+    protected int fThreshold;
+							 
+    /** The load factor for the SymbolTable. */
+    protected float fLoadFactor;
+    
+    /**
+     * A new hash function is selected and the table is rehashed when
+     * the number of keys in the bucket exceeds this threshold.
+     */
+    protected final int fCollisionThreshold;
+    
+    /**
+     * Array of randomly selected hash function multipliers or <code>null</code>
+     * if the default hash function should be used.
+     */
+    protected int[] fHashMultipliers;
 
     //
     // Constructors
     //
-
-    /** Constructs a symbol table with a default number of buckets. */
-    public SymbolTable() {
-        this(TABLE_SIZE);
+    
+    /**
+     * Constructs a new, empty SymbolTable with the specified initial 
+     * capacity and the specified load factor.
+     *
+     * @param      initialCapacity   the initial capacity of the SymbolTable.
+     * @param      loadFactor        the load factor of the SymbolTable.
+     * @throws     IllegalArgumentException  if the initial capacity is less
+     *             than zero, or if the load factor is nonpositive.
+     */
+    public SymbolTable(int initialCapacity, float loadFactor) {
+        
+        if (initialCapacity < 0) {
+            throw new IllegalArgumentException("Illegal Capacity: " + initialCapacity);
+        }
+        
+        if (loadFactor <= 0 || Float.isNaN(loadFactor)) {
+            throw new IllegalArgumentException("Illegal Load: " + loadFactor);
+        }
+        
+        if (initialCapacity == 0) {
+            initialCapacity = 1;
+        }
+        
+        fLoadFactor = loadFactor;
+        fTableSize = initialCapacity;
+        fBuckets = new Entry[fTableSize];
+        fThreshold = (int)(fTableSize * loadFactor);
+        fCollisionThreshold = (int)(MAX_HASH_COLLISIONS * loadFactor);
+        fCount = 0;
     }
 
-    /** Constructs a symbol table with a specified number of buckets. */
-    public SymbolTable(int tableSize) {
-        fTableSize = tableSize;
-        fBuckets = new Entry[fTableSize];
+    /**
+     * Constructs a new, empty SymbolTable with the specified initial capacity
+     * and default load factor, which is <tt>0.75</tt>.
+     *
+     * @param     initialCapacity   the initial capacity of the hashtable.
+     * @throws    IllegalArgumentException if the initial capacity is less
+     *            than zero.
+     */
+    public SymbolTable(int initialCapacity) {
+        this(initialCapacity, 0.75f);
+    }
+    
+    /**
+     * Constructs a new, empty SymbolTable with a default initial capacity (101)
+     * and load factor, which is <tt>0.75</tt>. 
+     */
+    public SymbolTable() {
+        this(TABLE_SIZE, 0.75f);
     }
 
     //
@@ -133,26 +231,42 @@ public class SymbolTable {
      * @param symbol The new symbol.
      */
     public String addSymbol(String symbol) {
-
+        
         // search for identical symbol
+        int collisionCount = 0;
         int bucket = hash(symbol) % fTableSize;
         int length = symbol.length();
         OUTER: for (Entry entry = fBuckets[bucket]; entry != null; entry = entry.next) {
             if (length == entry.characters.length) {
                 for (int i = 0; i < length; i++) {
                     if (symbol.charAt(i) != entry.characters[i]) {
+                        ++collisionCount;
                         continue OUTER;
                     }
                 }
                 return entry.symbol;
             }
+            ++collisionCount;
         }
-
+        
+        if (fCount >= fThreshold) {
+            // Rehash the table if the threshold is exceeded
+            rehash();
+            bucket = hash(symbol) % fTableSize;
+        }
+        else if (collisionCount >= fCollisionThreshold) {
+            // Select a new hash function and rehash the table if
+            // the collision threshold is exceeded.
+            rebalance();
+            bucket = hash(symbol) % fTableSize;
+        }
+        
         // create new entry
         Entry entry = new Entry(symbol, fBuckets[bucket]);
         fBuckets[bucket] = entry;
+        ++fCount;
         return entry.symbol;
-
+        
     } // addSymbol(String):String
 
     /**
@@ -166,25 +280,41 @@ public class SymbolTable {
      * @param length The length of the new symbol in the buffer.
      */
     public String addSymbol(char[] buffer, int offset, int length) {
-
+        
         // search for identical symbol
+        int collisionCount = 0;
         int bucket = hash(buffer, offset, length) % fTableSize;
         OUTER: for (Entry entry = fBuckets[bucket]; entry != null; entry = entry.next) {
             if (length == entry.characters.length) {
                 for (int i = 0; i < length; i++) {
                     if (buffer[offset + i] != entry.characters[i]) {
+                        ++collisionCount;
                         continue OUTER;
                     }
                 }
                 return entry.symbol;
             }
+            ++collisionCount;
         }
-
+        
+        if (fCount >= fThreshold) {
+            // Rehash the table if the threshold is exceeded
+            rehash();
+            bucket = hash(buffer, offset, length) % fTableSize;
+        }
+        else if (collisionCount >= fCollisionThreshold) {
+            // Select a new hash function and rehash the table if
+            // the collision threshold is exceeded.
+            rebalance();
+            bucket = hash(buffer, offset, length) % fTableSize;
+        }
+        
         // add new entry
         Entry entry = new Entry(buffer, offset, length, fBuckets[bucket]);
         fBuckets[bucket] = entry;
+        ++fCount;
         return entry.symbol;
-
+        
     } // addSymbol(char[],int,int):String
 
     /**
@@ -196,15 +326,26 @@ public class SymbolTable {
      * @param symbol The symbol to hash.
      */
     public int hash(String symbol) {
-
-        int code = 0;
-        int length = symbol.length();
-        for (int i = 0; i < length; i++) {
-            code = code * 37 + symbol.charAt(i);
+        if (fHashMultipliers == null) {
+            int code = 0;
+            int length = symbol.length();
+            for (int i = 0; i < length; i++) {
+                code = code * 37 + symbol.charAt(i);
+            }
+            return code & 0x7FFFFFF;
         }
-        return code & 0x7FFFFFF;
-
+        return hash0(symbol);
     } // hash(String):int
+    
+    private int hash0(String symbol) {
+        int code = 0;
+        final int length = symbol.length();
+        final int[] multipliers = fHashMultipliers;
+        for (int i = 0; i < length; ++i) {
+            code = code * multipliers[i & MULTIPLIERS_MASK] + symbol.charAt(i);
+        }
+        return code & 0x7FFFFFFF;
+    } // hash0(String):int
 
     /**
      * Returns a hashcode value for the specified symbol information.
@@ -218,14 +359,73 @@ public class SymbolTable {
      * @param length The length of the symbol.
      */
     public int hash(char[] buffer, int offset, int length) {
-
-        int code = 0;
-        for (int i = 0; i < length; i++) {
-            code = code * 37 + buffer[offset + i];
+        if (fHashMultipliers == null) {
+            int code = 0;
+            for (int i = 0; i < length; i++) {
+                code = code * 37 + buffer[offset + i];
+            }
+            return code & 0x7FFFFFF;
         }
-        return code & 0x7FFFFFF;
+        return hash0(buffer, offset, length);
 
     } // hash(char[],int,int):int
+    
+    private int hash0(char[] buffer, int offset, int length) {
+        int code = 0;
+        final int[] multipliers = fHashMultipliers;
+        for (int i = 0; i < length; ++i) {
+            code = code * multipliers[i & MULTIPLIERS_MASK] + buffer[offset + i];
+        }
+        return code & 0x7FFFFFFF;
+    } // hash0(char[],int,int):int
+
+    /**
+     * Increases the capacity of and internally reorganizes this 
+     * SymbolTable, in order to accommodate and access its entries more 
+     * efficiently.  This method is called automatically when the 
+     * number of keys in the SymbolTable exceeds this hashtable's capacity 
+     * and load factor. 
+     */
+    protected void rehash() {
+        rehashCommon(fBuckets.length * 2 + 1);
+    }
+    
+    /**
+     * Randomly selects a new hash function and reorganizes this SymbolTable
+     * in order to more evenly distribute its entries across the table. This 
+     * method is called automatically when the number keys in one of the 
+     * SymbolTable's buckets exceeds the given collision threshold.
+     */
+    protected void rebalance() {
+        if (fHashMultipliers == null) {
+            fHashMultipliers = new int[MULTIPLIERS_SIZE];
+        }
+        PrimeNumberSequenceGenerator.generateSequence(fHashMultipliers);
+        rehashCommon(fBuckets.length);
+    }
+    
+    private void rehashCommon(final int newCapacity) {
+        
+        int oldCapacity = fBuckets.length;
+        Entry[] oldTable = fBuckets;
+
+        Entry[] newTable = new Entry[newCapacity];
+
+        fThreshold = (int)(newCapacity * fLoadFactor);
+        fBuckets = newTable;
+        fTableSize = fBuckets.length;
+
+        for (int i = oldCapacity ; i-- > 0 ;) {
+            for (Entry old = oldTable[i] ; old != null ; ) {
+                Entry e = old;
+                old = old.next;
+
+                int index = hash(e.symbol) % newCapacity;
+                e.next = newTable[index];
+                newTable[index] = e;
+            }
+        }
+    }
 
     /**
      * Returns true if the symbol table already contains the specified
