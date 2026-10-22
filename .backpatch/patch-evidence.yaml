@@ -1,6 +1,6 @@
 schema: osera-patch-evidence/0.1.0
 producer: moderne
-release: 2.2.1.1-backpatch-00002
+release: 2.2.1.1-backpatch-00003
 baseline: v2.2.1+backpatch.baseline
 fixes:
   - cve: CVE-2022-23437
@@ -18,12 +18,20 @@ fixes:
     basis: adapted
     artifacts:
       - xerces:xercesImpl
-    note: New in this release; adapted onto 2.2.1; fixed at 2.2.1.1-backpatch-00002 (backpatch-xercesImpl@2806763).
+    note: Carried from 2.2.1.1-backpatch-00002.
+  - cve: CVE-2013-4002
+    upstream_fix_url: https://github.com/apache/xerces2-j/commit/266e837852e0f0e3c8c1ad572b6fc4dbb4ded17b
+    advisory_url: https://nvd.nist.gov/vuln/detail/CVE-2013-4002
+    patch_commit_url: https://github.com/moderne-backpatch-alliance/backpatch-xercesImpl/commit/c14d264
+    basis: backport
+    artifacts:
+      - xerces:xercesImpl
+    note: New in this release; ported onto 2.2.1; fixed at 2.2.1.1-backpatch-00003 (backpatch-xercesImpl@c14d264).
 tests:
-  commit: 2806763eabdf57d3d2474660e6c20595c1aa9252
+  commit: c14d26439d06222870e4e9c2730602bbede1082b
   command: "JAVA_HOME=<jdk-7> /bin/bash <alliance>/work/wave2/items/scripts/xerces-2.2.1.sh suite <m2> "
   runtime: Azul Zulu (Java 1.7.0_352), build.xml's test programs, macOS x86_64 under Rosetta 2
-  report: xercesImpl-2.2.1.1-backpatch-00002-tests.zip
-  report_sha256: 47547dfa99d88c3ae5d2c5a9579a61f96753acc4b1175c311d67e17cef4109a2
+  report: xercesImpl-2.2.1.1-backpatch-00003-tests.zip
+  report_sha256: a9c5d23f1407564a4ff5a4d28c40dd3f34e404838fb2832bd6b68eceab58f830
   result: pass
-  note: "run at 9f4f7648a787, whose tree equals this commit's apart from .backpatch/patch-evidence.yaml; the full suite at the tested commit, 7 tests run, 0 failed, 0 skipped; the regression tests for CVE-2009-2625 are SystemLiteralTest; the suite does not run the regression tests SystemLiteralTest, so they ran separately at the same commit: 3 tests, 0 failed (in the archive under regression/)"
+  note: "run at 6ab9c6e68731, whose tree equals this commit's apart from .backpatch/patch-evidence.yaml; the full suite at the tested commit, 7 tests run, 0 failed, 0 skipped; the regression tests for CVE-2013-4002 are XMLDeclTest; the suite does not run the regression tests SystemLiteralTest, XMLDeclTest, so they ran separately at the same commit: 7 tests, 0 failed (in the archive under regression/)"
