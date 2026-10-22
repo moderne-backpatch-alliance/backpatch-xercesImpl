@@ -1,0 +1,21 @@
+schema: osera-patch-evidence/0.1.0
+producer: moderne
+release: 2.2.1.1-backpatch-00001
+baseline: v2.2.1+backpatch.baseline
+fixes:
+  - cve: CVE-2022-23437
+    upstream_fix_url: https://github.com/apache/xerces2-j/commit/da8efa66241dd63cb34eacb22bc28c3469af91a6
+    advisory_url: https://nvd.nist.gov/vuln/detail/CVE-2022-23437
+    patch_commit_url: https://github.com/moderne-backpatch-alliance/backpatch-xercesImpl/commit/f73e917
+    basis: adapted
+    artifacts:
+      - xerces:xercesImpl
+    note: New in this release; adapted onto 2.2.1; fixed at 2.2.1.1-backpatch-00001 (backpatch-xercesImpl@f73e917).
+tests:
+  commit: f73e917ed2b8e8684e3f0f9fc970ada722ed37d4
+  command: JAVA_HOME=<jdk-7> /bin/bash <alliance>/work/wave2/items/scripts/xerces-2.2.1.sh suite <m2> 
+  runtime: Azul Zulu (Java 1.7.0_352), build.xml's test programs, macOS x86_64 under Rosetta 2
+  report: xercesImpl-2.2.1.1-backpatch-00001-tests.zip
+  report_sha256: 9d6df32e399ce7240a9f1590d9d8d763b9cf322047b73660b61cb61f99809450
+  result: pass
+  note: the full suite at the tested commit, 7 tests run, 0 failed, 0 skipped; CVE-2022-23437 has no regression test (its commits change no test class; verified by review)
