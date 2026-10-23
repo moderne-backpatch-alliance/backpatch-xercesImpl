@@ -30,16 +30,16 @@ fixes:
   - cve: CVE-2012-0881
     upstream_fix_url: https://github.com/apache/xerces2-j/commit/992b5d9c24102ad20330d36c0a71162753a37449
     advisory_url: https://nvd.nist.gov/vuln/detail/CVE-2012-0881
-    patch_commit_url: https://github.com/moderne-backpatch-alliance/backpatch-xercesImpl/commit/3f2306c
+    patch_commit_url: https://github.com/moderne-backpatch-alliance/backpatch-xercesImpl/compare/3f2306c~1...793f595
     basis: adapted
     artifacts:
       - xerces:xercesImpl
-    note: New in this release; adapted onto 2.2.1; fixed at 2.2.1.1-backpatch-00004 (backpatch-xercesImpl@3f2306c).
+    note: New in this release; adapted onto 2.2.1; fixed at 2.2.1.1-backpatch-00004 (backpatch-xercesImpl@3f2306c..793f595).
 tests:
-  commit: 3f2306c56c1f63b2666fd5c28fe4999a096c2ce0
+  commit: 793f595c774d9839239fed7f17f37ad769575726
   command: "JAVA_HOME=<jdk-7> /bin/bash <alliance>/work/wave2/items/scripts/xerces-2.2.1.sh suite <m2> "
-  runtime: Azul Zulu (Java 1.7.0_352), build.xml's test programs, macOS x86_64 under Rosetta 2
+  runtime: "Azul Zulu (Java 1.7.0_352), build.xml's test programs, macOS x86_64 under Rosetta 2"
   report: xercesImpl-2.2.1.1-backpatch-00004-tests.zip
-  report_sha256: eaac52d04cbc6f79e8530a644584b9117b728611720a476132bc16bd1b2cc24b
+  report_sha256: 6d579a5c8bcdc6584158c328e32dd98c9d8cb3708b0336a37499b206fe9ca52a
   result: pass
-  note: "run at f303ee413413, whose tree equals this commit's apart from .backpatch/patch-evidence.yaml; the full suite at the tested commit, 7 tests run, 0 failed, 0 skipped; the regression tests for CVE-2012-0881 are HashCollisionTest; the suite does not run the regression tests HashCollisionTest, SystemLiteralTest, XMLDeclTest, so they ran separately at the same commit: 13 tests, 0 failed (in the archive under regression/)"
+  note: "the full suite at the tested commit, 7 tests run, 0 failed, 0 skipped; rerun after HashCollisionTest gained its /* $Id$ */ first line; the regression tests for CVE-2012-0881 are HashCollisionTest; the suite does not run the regression tests HashCollisionTest, SystemLiteralTest, XMLDeclTest, so they ran separately at the same commit: 13 tests, 0 failed (in the archive under regression/)"
